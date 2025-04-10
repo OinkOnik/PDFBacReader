@@ -1,5 +1,3 @@
-# constants.py
-
 """
 Archivo de constantes para la aplicación de extracción de datos PDF.
 Contiene listas de títulos a buscar y patrones a excluir en los documentos PDF.
@@ -31,7 +29,6 @@ BASE_TITLES = [
     "Cantidad GSM",
     "Datos de terminal",
     "¿Instalar SIM adicional?",
-    "Fotografía de SIM",
     "¿El datáfono instalado lleva código QR?",
     "Tipo de gestiones",
     "Atención por",

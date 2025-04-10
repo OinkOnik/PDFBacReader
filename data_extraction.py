@@ -299,7 +299,6 @@ def merge_dataframes(df_list):
         'Entrega de Papelería y Cantidad',
         'Evaluaciones a realizar',
         'Fecha resolución',
-        'Fotografía de SIM',
         'Hora de llegada',
         'Hora de salida',
         'Indique número de SS',
