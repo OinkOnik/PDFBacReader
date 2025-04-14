@@ -49,7 +49,8 @@ def extract_data_from_pdf(pdf_path):
             "Número Afiliado Gestión Afiliado principal",
             "Atención por",
             "Nombre del oficial técnico que brinda servicio",
-            "Validación fecha"
+            "Validación fecha",
+            "Entrega de Papelería y Cantidad"  # Añadido a la lista
         ]
 
         # Títulos que requieren extracción multilinea
@@ -61,17 +62,11 @@ def extract_data_from_pdf(pdf_path):
         while i < len(lines):
             line = lines[i].strip()
 
-            # Verificar si la línea actual comienza exactamente con uno de los títulos
             for title in TITLES_TO_EXTRACT:
                 if line == title or line.startswith(title + ":") or line.startswith(title + " "):
-                    # Contador para múltiples ocurrencias
                     title_counters[title] = title_counters.get(title, 0) + 1
-                    if title_counters[title] > 1:
-                        key = f"{title} ({title_counters[title]})"
-                    else:
-                        key = title
+                    key = f"{title} ({title_counters[title]})" if title_counters[title] > 1 else title
 
-                    # Si el valor está en la misma línea tras dos puntos
                     if ":" in line:
                         possible_value = line.split(":", 1)[1].strip()
                         if possible_value:
@@ -79,7 +74,6 @@ def extract_data_from_pdf(pdf_path):
                             i += 1
                             break
 
-                    # Extraer valor en la siguiente línea(s)
                     value = ""
                     j = i + 1
 
@@ -93,7 +87,6 @@ def extract_data_from_pdf(pdf_path):
                     }
                     stop_pattern = special_cases.get(title)
 
-                    # Manejo para títulos multilínea
                     if title in multiline_titles:
                         multiline_value = []
                         while j < len(lines):
@@ -109,7 +102,6 @@ def extract_data_from_pdf(pdf_path):
                         i = j
                         break
 
-                    # Extracción normal de un solo valor
                     while j < len(lines):
                         next_line = lines[j].strip()
                         if stop_pattern and next_line.startswith(stop_pattern):
@@ -185,6 +177,35 @@ def extract_data_from_pdf(pdf_path):
                     break
                 i += 1
 
+        # ✅ PROCESAMIENTO ESPECIAL PARA LA TABLA "Entrega de Papelería y Cantidad"
+        if "Entrega de Papelería y Cantidad" in data:
+            material_table_pattern = r"Entrega de Papelería y Cantidad.*?Material\s+Cantidad\s+(.*?)(?:Gestión de Papelería|$)"
+            table_match = re.search(material_table_pattern, full_text, re.DOTALL)
+
+            if table_match:
+                table_content = table_match.group(1).strip()
+                rows = re.findall(r"([^\n]+?)\s+(\d+)(?:\s*$|\n)", table_content)
+
+                if rows:
+                    materials_data = []
+                    for material, quantity in rows:
+                        materials_data.append(f"{material.strip()}: {quantity.strip()}")
+                    data["Entrega de Papelería y Cantidad"] = "\n".join(materials_data)
+
+            elif data.get("Entrega de Papelería y Cantidad") == "":
+                i = 0
+                while i < len(lines):
+                    if "Material" in lines[i] and "Cantidad" in lines[i]:
+                        material_line = i + 1
+                        if material_line < len(lines) and lines[material_line].strip():
+                            parts = re.split(r'\s{2,}', lines[material_line].strip())
+                            if len(parts) >= 2:
+                                material = parts[0].strip()
+                                quantity = parts[-1].strip()
+                                data["Entrega de Papelería y Cantidad"] = f"{material}: {quantity}"
+                        break
+                    i += 1
+
         # Extracción extra de horas en las últimas páginas
         try:
             pdf_document = fitz.open(pdf_path)
@@ -202,7 +223,6 @@ def extract_data_from_pdf(pdf_path):
         except Exception:
             pass
 
-        # Patrones especiales de búsqueda si faltan campos
         special_patterns = {
             "Correlativo": r"Correlativo[:\s]*([^\n]+)",
             "Número Afiliado Gestión Afiliado principal": r"(?:Número|N[úu]mero)\s*Afiliado\s*Gesti[óo]n\s*Afiliado\s*principal[:\s]*([^\n]+)",
@@ -216,7 +236,6 @@ def extract_data_from_pdf(pdf_path):
                 if match:
                     data[field] = match.group(1).strip()
 
-        # Patrón multiline para "Revisión General"
         special_multiline_pattern = {
             "Revisión General en cualquier visita": r"Revisi[óo]n\s*General\s*en\s*cualquier\s*visita:?([\s\S]*?)(?=(?:" +
                                                   "|".join(TITLES_TO_EXTRACT) + r"|$))"
@@ -233,7 +252,6 @@ def extract_data_from_pdf(pdf_path):
                     if cleaned_lines:
                         data[field] = "\n".join(cleaned_lines)
 
-        # Agrupamos y formateamos los datos de terminales
         process_terminal_data(data)
 
         return data
