@@ -16,10 +16,6 @@ import os
 from constants import (
     TITLES_TO_EXTRACT,
     PATTERNS_TO_EXCLUDE,
-    ALL_POSSIBLE_TITLES,
-    TERMINAL_FORMATTED_TITLES,
-    REPEATING_TITLES,
-    BASE_TITLES
 )
 from data_processing import process_terminal_data, merge_dataframes
 
@@ -50,12 +46,13 @@ def extract_data_from_pdf(pdf_path):
             "Atención por",
             "Nombre del oficial técnico que brinda servicio",
             "Validación fecha",
-            "Entrega de Papelería y Cantidad"  # Añadido a la lista
+            "Entrega de Papelería y Cantidad"
         ]
 
         # Títulos que requieren extracción multilinea
         multiline_titles = [
-            "Revisión General en cualquier visita"
+            "Revisión General en cualquier visita",
+            "Detalle de trabajo realizado para cierre de gestión"  # Añadido a la lista de multilinea
         ]
 
         # Primera pasada: buscar títulos exactos incluyendo los especiales
@@ -91,8 +88,10 @@ def extract_data_from_pdf(pdf_path):
                         multiline_value = []
                         while j < len(lines):
                             next_line = lines[j].strip()
+                            if title == "Detalle de trabajo realizado para cierre de gestión" and next_line == stop_pattern:
+                                break
                             if any(next_line.startswith(t) for t in TITLES_TO_EXTRACT) or \
-                               re.match(r'^[A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s#¿?]+:', next_line):
+                                    re.match(r'^[A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s#¿?]+:', next_line):
                                 break
                             if next_line and not any(re.search(pat, next_line) for pat in PATTERNS_TO_EXCLUDE):
                                 multiline_value.append(next_line)
@@ -156,26 +155,33 @@ def extract_data_from_pdf(pdf_path):
                             data[title] = lines[i + 1].strip()
                     i += 1
 
-        # Búsqueda específica para "Revisión General"
-        if "Revisión General en cualquier visita" not in data:
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
-                if line.startswith("Revisión General"):
-                    j = i + 1
-                    multiline_value = []
-                    while j < len(lines):
-                        next_line = lines[j].strip()
-                        if any(next_line.startswith(t) for t in TITLES_TO_EXTRACT) or \
-                           re.match(r'^[A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s#¿?]+:', next_line):
-                            break
-                        if next_line and not any(re.search(pat, next_line) for pat in PATTERNS_TO_EXCLUDE):
-                            multiline_value.append(next_line)
-                        j += 1
-                    if multiline_value:
-                        data["Revisión General en cualquier visita"] = "\n".join(multiline_value)
-                    break
-                i += 1
+        # Búsqueda específica para "Revisión General" y "Detalle de trabajo realizado"
+        for title in multiline_titles:
+            if title not in data:
+                i = 0
+                while i < len(lines):
+                    line = lines[i].strip()
+                    if line.startswith(title):
+                        j = i + 1
+                        multiline_value = []
+                        stop_pattern = None
+                        if title == "Detalle de trabajo realizado para cierre de gestión":
+                            stop_pattern = "Ubicación del comercio"
+
+                        while j < len(lines):
+                            next_line = lines[j].strip()
+                            if stop_pattern and next_line.startswith(stop_pattern):
+                                break
+                            if any(next_line.startswith(t) for t in TITLES_TO_EXTRACT) or \
+                                    re.match(r'^[A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s#¿?]+:', next_line):
+                                break
+                            if next_line and not any(re.search(pat, next_line) for pat in PATTERNS_TO_EXCLUDE):
+                                multiline_value.append(next_line)
+                            j += 1
+                        if multiline_value:
+                            data[title] = "\n".join(multiline_value)
+                        break
+                    i += 1
 
         # ✅ PROCESAMIENTO ESPECIAL PARA LA TABLA "Entrega de Papelería y Cantidad"
         if "Entrega de Papelería y Cantidad" in data:
@@ -223,6 +229,20 @@ def extract_data_from_pdf(pdf_path):
         except Exception:
             pass
 
+        # Búsqueda adicional para "Detalle de trabajo realizado para cierre de gestión"
+        if "Detalle de trabajo realizado para cierre de gestión" not in data:
+            pattern = r"Detalle de trabajo realizado para cierre de gestión:?([\s\S]*?)(?=Ubicación del comercio|" + "|".join(
+                TITLES_TO_EXTRACT) + r"|$)"
+            match = re.search(pattern, full_text, re.IGNORECASE)
+            if match:
+                captured_text = match.group(1).strip()
+                cleaned_lines = [
+                    ln.strip() for ln in captured_text.split('\n')
+                    if ln.strip() and not any(re.search(pat, ln) for pat in PATTERNS_TO_EXCLUDE)
+                ]
+                if cleaned_lines:
+                    data["Detalle de trabajo realizado para cierre de gestión"] = "\n".join(cleaned_lines)
+
         special_patterns = {
             "Correlativo": r"Correlativo[:\s]*([^\n]+)",
             "Número Afiliado Gestión Afiliado principal": r"(?:Número|N[úu]mero)\s*Afiliado\s*Gesti[óo]n\s*Afiliado\s*principal[:\s]*([^\n]+)",
@@ -238,7 +258,7 @@ def extract_data_from_pdf(pdf_path):
 
         special_multiline_pattern = {
             "Revisión General en cualquier visita": r"Revisi[óo]n\s*General\s*en\s*cualquier\s*visita:?([\s\S]*?)(?=(?:" +
-                                                  "|".join(TITLES_TO_EXTRACT) + r"|$))"
+                                                    "|".join(TITLES_TO_EXTRACT) + r"|$))"
         }
         for field, pattern in special_multiline_pattern.items():
             if field not in data:
