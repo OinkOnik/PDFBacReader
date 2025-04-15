@@ -44,7 +44,8 @@ REPEATING_TITLES = [
     "Modelo de Terminal",
     "Número de SIM",
     "Número de Serie",
-    "Número de Terminal"
+    "Número de Terminal",
+    "Comentario"
 ]
 
 # El número máximo de repeticiones

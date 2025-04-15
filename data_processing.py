@@ -111,7 +111,8 @@ def merge_dataframes(df_list):
         "Modelo de Terminal",
         "Número de SIM",
         "Número de Serie",
-        "Número de Terminal"
+        "Número de Terminal",
+        "Comentario"
     ]
 
     for i in range(1, MAX_REPETITIONS + 1):
