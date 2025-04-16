@@ -15,6 +15,11 @@ from PyQt6.QtWidgets import (QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QFont, QAction
 from pdf_processor import PDFExtractorThread
+import pandas as pd
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.formatting.rule import FormulaRule
 
 
 class PDFExtractorApp(QMainWindow):
@@ -294,9 +299,84 @@ class PDFExtractorApp(QMainWindow):
         # Mostrar mensaje de error
         QMessageBox.critical(self, "Error", message)
 
+    def apply_excel_styles(self, workbook, worksheet):
+        """
+        Aplica estilos al archivo Excel para mejorar su apariencia.
+
+        Args:
+            workbook: Libro de Excel (objeto openpyxl.Workbook)
+            worksheet: Hoja de cálculo (objeto openpyxl.Worksheet)
+        """
+        # Definir estilos para los encabezados
+        header_font = Font(name='Arial', size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        header_border = Border(
+            left=Side(style='thin', color="000000"),
+            right=Side(style='thin', color="000000"),
+            top=Side(style='thin', color="000000"),
+            bottom=Side(style='thin', color="000000")
+        )
+
+        # Definir estilos para las filas de datos
+        data_font = Font(name='Arial', size=10)
+        data_alignment = Alignment(vertical='center', wrap_text=True)
+        data_border = Border(
+            left=Side(style='thin', color="000000"),
+            right=Side(style='thin', color="000000"),
+            top=Side(style='thin', color="000000"),
+            bottom=Side(style='thin', color="000000")
+        )
+
+        # Colores alternos para las filas (celeste claro y blanco)
+        light_blue_fill = PatternFill(start_color="DEEBF7", end_color="DEEBF7", fill_type="solid")
+
+        # Aplicar estilo a los encabezados (primera fila)
+        for col in range(1, worksheet.max_column + 1):
+            cell = worksheet.cell(1, col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = header_border
+
+        # Ajustar el alto de la primera fila
+        worksheet.row_dimensions[1].height = 30
+
+        # Aplicar estilos a las filas de datos con colores alternados
+        for row in range(2, worksheet.max_row + 1):
+            for col in range(1, worksheet.max_column + 1):
+                cell = worksheet.cell(row, col)
+                cell.font = data_font
+                cell.alignment = data_alignment
+                cell.border = data_border
+
+                # Aplicar color alterno a las filas
+                if row % 2 == 0:
+                    cell.fill = light_blue_fill
+
+        # Ajustar el ancho de las columnas para mejor visualización
+        for col in range(1, worksheet.max_column + 1):
+            column_letter = get_column_letter(col)
+            max_length = 0
+
+            # Encontrar la celda con el contenido más largo en esta columna
+            for row in range(1, worksheet.max_row + 1):
+                cell_value = str(worksheet.cell(row, col).value)
+                max_length = max(max_length, len(cell_value))
+
+            # Limitar el ancho máximo a 50 caracteres para evitar columnas demasiado anchas
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+
+        # Congelar la primera fila
+        worksheet.freeze_panes = "A2"
+
+        # Aplicar autofilter para facilitar la navegación
+        worksheet.auto_filter.ref = f"A1:{get_column_letter(worksheet.max_column)}{worksheet.max_row}"
+
     def export_results(self):
-        """Exporta los resultados a un archivo Excel"""
-        if not self.original_df is not None:
+        """Exporta los resultados a un archivo Excel con estilos mejorados"""
+        if self.original_df is None or len(self.original_df) == 0:
             QMessageBox.warning(self, "Advertencia", "No hay datos para exportar.")
             return
 
@@ -316,8 +396,27 @@ class PDFExtractorApp(QMainWindow):
                 # Mostrar progreso en la barra de estado
                 self.statusBar.showMessage("Exportando datos a Excel...")
 
-                # Usar el dataframe original para exportación
-                self.original_df.to_excel(file_path, index=False)
+                # Crear un libro y hoja de trabajo de Excel usando openpyxl
+                workbook = openpyxl.Workbook()
+                worksheet = workbook.active
+                worksheet.title = "Datos Extraídos"
+
+                # Añadir encabezados
+                for col_idx, column_name in enumerate(self.original_df.columns, start=1):
+                    worksheet.cell(row=1, column=col_idx).value = column_name
+
+                # Añadir datos
+                for row_idx, row in enumerate(self.original_df.itertuples(index=False), start=2):
+                    for col_idx, value in enumerate(row, start=1):
+                        # Evitar valores None
+                        cell_value = "" if value is None else value
+                        worksheet.cell(row=row_idx, column=col_idx).value = cell_value
+
+                # Aplicar estilos
+                self.apply_excel_styles(workbook, worksheet)
+
+                # Guardar el archivo
+                workbook.save(file_path)
 
                 # Actualizar barra de estado
                 self.statusBar.showMessage(f"Datos exportados exitosamente a {os.path.basename(file_path)}")
